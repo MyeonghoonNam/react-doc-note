@@ -309,7 +309,126 @@ export default function TaskApp() {
 
 `reducer`를 작성할 때 반드시 명심할 점이 있다.
 
-- **`Reducer`는 반드시 순수해야 한다.**
+**`Reducer`는 반드시 순수해야 한다.**
+
+`reducer`는 렌더링 중에 실행되기 때문이다.(`action`은 다음 렌더링까지 대기한다.)
+
+입력 값이 같다면 결과 값도 항상 같아야한다. 요청을 보내거나 timeout을 스케쥴링하거나 사이드 이펙트를 수행해서는 안된다.
+
+`reducer`는 객체와 배열을 변경하지 않고 업데이트해야 한다.
+
+**각 `action`은 데이터 안에서 여러 변경들이 있더라도 하나의 상호작용을 설명해야한다.**
+
+예를 들어 사용자가 `reducer`가 관리하는 5개의 필드가 있는 양식에서 ‘재설정’을 누른 경우, 5개의 개별 `set_field` `action`보다는 하나의 `reset_form` `action`을 전송하는 것이 더 합리적이다.
+
+모든 `action`을 `reducer`에 기록하면 어떤 상호작용이나 응답이 어떤 순서로 일어났는지 재구성할 수 있을 만큼 로그가 명확해야 한다. 이는 디버깅에 도움이 된다.
+
+#### Immer로 간결한 reducer 작성하기
+
+```js
+import { useImmerReducer } from 'use-immer';
+import AddTask from './AddTask.js';
+import TaskList from './TaskList.js';
+
+function tasksReducer(draft, action) {
+  switch (action.type) {
+    case 'added': {
+      draft.push({
+        id: action.id,
+        text: action.text,
+        done: false,
+      });
+      break;
+    }
+    case 'changed': {
+      const index = draft.findIndex((t) => t.id === action.task.id);
+      draft[index] = action.task;
+      break;
+    }
+    case 'deleted': {
+      return draft.filter((t) => t.id !== action.id);
+    }
+    default: {
+      throw Error('Unknown action: ' + action.type);
+    }
+  }
+}
+
+export default function TaskApp() {
+  const [tasks, dispatch] = useImmerReducer(tasksReducer, initialTasks);
+
+  function handleAddTask(text) {
+    dispatch({
+      type: 'added',
+      id: nextId++,
+      text: text,
+    });
+  }
+
+  function handleChangeTask(task) {
+    dispatch({
+      type: 'changed',
+      task: task,
+    });
+  }
+
+  function handleDeleteTask(taskId) {
+    dispatch({
+      type: 'deleted',
+      id: taskId,
+    });
+  }
+
+  return (
+    <>
+      <h1>Prague itinerary</h1>
+      <AddTask onAddTask={handleAddTask} />
+      <TaskList tasks={tasks} onChangeTask={handleChangeTask} onDeleteTask={handleDeleteTask} />
+    </>
+  );
+}
+
+let nextId = 3;
+const initialTasks = [
+  { id: 0, text: 'Visit Kafka Museum', done: true },
+  { id: 1, text: 'Watch a puppet show', done: false },
+  { id: 2, text: 'Lennon Wall pic', done: false },
+];
+```
+
+`reducer`는 순수해야 하기 때문에, 이 안에서는 state를 직접 변경할 수 없다. 그러나 `Immer`에서 제공하는 `draft` 객체를 사용하면 안전하게 불변성을 유지한채로 `state`를 변경할 수 있다.
+
+내부적으로 `draft`로 `state`의 복사본을 생성하고 상태를 관리하기에 `useImmerReducer`가 관리하는 `reducer`가 첫 번째 인수인 `state`를 변형할 수 있고 새로운 `state` 값을 무조건 반환할 필요가 없는 이유이다.
+
+#### 요약
+
+- `useState`에서 `useReducer`로 변환
+
+  - 이벤트 핸들러에서 `action`을 전달한다.
+  - 주어진 `state`와 `action`에 대해 다음 `state`를 반환하는 `reducer` 함수를 작성한다.
+  - `useState`를 `useReducer`로 바꾼다.
+
+- `reducer`를 사용하면 코드를 조금 더 작성할 수 있지만 복잡한 비지니스 코드에 대해 디버깅과 테스트, 가독성 향상에 도움이 될 수 있다.
+- `reducer`는 반드시 순수함수로 동작해야 한다. (렌더링 중에 실행되기 때문)
+- 각 `action`은 단일 사용자 상호작용을 설명해야 한다. (하나의 동작)
+- 객체와 배열을 변경하는 스타일로 `reducer`를 작성하려면 `Immer` 라이브러리를 사용한다.
+
+#### useReducer hook 구현해보기
+
+```js
+import { useState } from 'react';
+
+export function useReducer(reducer, initialState) {
+  const [state, setState] = useState(initialState);
+
+  const dispatch = (action) => {
+    // 업데이터 함수처럼 동작해야할 action에 대해서 다음 렌더링이 있을 때까지 큐에 쌓이기에 함수형으로 작성
+    setState((s) => reducer(s, action));
+  };
+
+  return [state, dispatch];
+}
+```
 
 ## React Refernce
 
